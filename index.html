@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student & Subject Diagnostic Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .heatmap-cell { width: 42px; min-width: 42px; height: 34px; font-size: 0.72rem; text-align: center; vertical-align: middle; }
+    .bg-distinction { background-color: #d1fae5; color: #065f46; font-weight: 600; }
+    .bg-pass { background-color: #e0f2fe; color: #0369a1; }
+    .bg-borderline { background-color: #fef3c7; color: #92400e; font-weight: 600; }
+    .bg-fail { background-color: #ffe4e6; color: #9f1239; font-weight: 700; }
+    .bg-na { background-color: #f3f4f6; color: #9ca3af; }
+    .dragover { border-color: #4f46e5 !important; background-color: #eef2ff !important; }
+
+    /* Sticky Columns & Header Row for Cohort Marks Grid (Heatmap) */
+    .heatmap-container {
+      max-height: 70vh;
+      overflow: auto;
+      position: relative;
+    }
+    
+    .heatmap-table {
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    .sticky-col-1 {
+      position: sticky;
+      left: 0;
+      z-index: 20;
+      background-color: #f8fafc;
+      box-shadow: 2px 0 4px -2px rgba(0,0,0,0.1);
+      min-width: 55px;
+      width: 55px;
+    }
+    .sticky-col-2 {
+      position: sticky;
+      left: 55px;
+      z-index: 20;
+      background-color: #f8fafc;
+      box-shadow: 2px 0 4px -2px rgba(0,0,0,0.1);
+      min-width: 180px;
+      width: 180px;
+    }
+    .sticky-col-3 {
+      position: sticky;
+      left: 235px;
+      z-index: 20;
+      background-color: #f8fafc;
+      box-shadow: 2px 0 4px -2px rgba(0,0,0,0.1);
+      min-width: 65px;
+      width: 65px;
+    }
+
+    /* Sticky Header Row */
+    .heatmap-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 25;
+      background-color: #f1f5f9;
+    }
+
+    /* Intersection of Sticky Header and Sticky Columns */
+    .heatmap-table thead th.sticky-col-1 {
+      z-index: 40;
+      left: 0;
+      top: 0;
+    }
+    .heatmap-table thead th.sticky-col-2 {
+      z-index: 40;
+      left: 55px;
+      top: 0;
+    }
+    .heatmap-table thead th.sticky-col-3 {
+      z-index: 40;
+      left: 235px;
+      top: 0;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-slate-900 text-white shadow-md py-4 px-6">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+      <div>
+        <h1 class="text-xl font-bold tracking-wide flex items-center gap-2">
+          <svg class="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+          Student & Subject Diagnostic Dashboard
+        </h1>
+        <p class="text-xs text-slate-400 mt-0.5">MOE RE_RES_078 Format Analyzer • 100% Client-Side Local Analysis</p>
+      </div>
+
+      <div id="headerUploadBtn" class="hidden">
+        <label class="cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-xs font-semibold transition shadow-sm flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+          Upload Another File
+          <input type="file" id="excelFileInputHeader" accept=".xlsx, .xls" class="hidden" onchange="handleFileUpload(event)">
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+
+    <!-- Upload Drop Zone -->
+    <div id="uploadPrompt" class="bg-white rounded-2xl border-2 border-dashed border-indigo-200 p-10 text-center space-y-4 transition-all duration-200 hover:border-indigo-400 cursor-pointer"
+         onclick="if(event.target.tagName !== 'INPUT') triggerFileInput()">
+      <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto pointer-events-none">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+      </div>
+      <div class="pointer-events-none">
+        <h3 class="text-lg font-bold text-slate-800">Drag & Drop RE_RES_078 Excel File Here</h3>
+        <p class="text-xs text-slate-500 mt-1">Supports .xlsx and .xls formats from MOE Cockpit</p>
+      </div>
+      <div class="pt-2">
+        <span class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-semibold shadow-md transition pointer-events-none">
+          Browse Computer
+        </span>
+        <input type="file" id="excelFileInput" accept=".xlsx, .xls" class="hidden" onchange="handleFileUpload(event)">
+      </div>
+    </div>
+
+    <!-- Dashboard Content -->
+    <div id="dashboardContent" class="hidden space-y-6">
+
+      <!-- Controls Bar -->
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="flex items-center gap-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">ASSESSMENT TYPE:</span>
+          <div class="inline-flex rounded-lg bg-slate-100 p-1 border border-slate-200" id="periodToggleGroup">
+            <!-- Dynamically populated buttons -->
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3 w-full md:w-auto">
+          <label for="classFilter" class="text-xs font-semibold uppercase tracking-wider text-slate-500">Filter Class:</label>
+          <select id="classFilter" onchange="renderDashboard()" class="bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg p-2 focus:ring-indigo-500 focus:border-indigo-500 font-semibold">
+            <option value="ALL">All Classes</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Metric Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Cohort</p>
+            <h3 id="kpiTotalStudents" class="text-2xl font-bold text-slate-800 mt-1">0</h3>
+            <p class="text-xs text-slate-500 mt-1">Enrolled Students</p>
+          </div>
+          <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">STD</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cohort Pass Rate</p>
+            <h3 id="kpiPassRate" class="text-2xl font-bold text-emerald-600 mt-1">0%</h3>
+            <p class="text-xs text-slate-500 mt-1">Passing ≥ 5 Subjects</p>
+          </div>
+          <div class="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">%</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Critical Priority</p>
+            <h3 id="kpiCriticalCount" class="text-2xl font-bold text-rose-600 mt-1">0</h3>
+            <p class="text-xs text-rose-500 mt-1">Failing ≥ 3 or Core EL/MA</p>
+          </div>
+          <div class="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-bold">!</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Trajectory Drops</p>
+            <h3 id="kpiDropCount" class="text-2xl font-bold text-amber-600 mt-1">0</h3>
+            <p class="text-xs text-amber-600 mt-1 font-medium">Average Dropped ≥ 10% vs Prev Assessment</p>
+          </div>
+          <div class="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">↓</div>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="border-b border-slate-200 flex gap-6 text-sm font-semibold text-slate-500">
+        <button onclick="switchTab('tabRisk')" id="tabBtn-tabRisk" class="pb-3 border-b-2 border-indigo-600 text-indigo-600">Student Risk Identification</button>
+        <button onclick="switchTab('tabSubjects')" id="tabBtn-tabSubjects" class="pb-3 border-b-2 border-transparent hover:text-slate-800">Subject Performance Analysis</button>
+        <button onclick="switchTab('tabHeatmap')" id="tabBtn-tabHeatmap" class="pb-3 border-b-2 border-transparent hover:text-slate-800">Cohort Marks Grid (Heatmap)</button>
+      </div>
+
+      <!-- TAB 1: Student Risk Identification -->
+      <div id="tabRisk" class="tab-pane space-y-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+          <div class="flex items-center gap-2 overflow-x-auto w-full md:w-auto">
+            <button onclick="setRiskFilter('ALL')" id="rf-ALL" class="px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-white">All Students</button>
+            <button onclick="setRiskFilter('CRITICAL')" id="rf-CRITICAL" class="px-3 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700 hover:bg-rose-200">Critical Priority</button>
+            <button onclick="setRiskFilter('DROP')" id="rf-DROP" class="px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200">Trajectory Drops (≥ 10%)</button>
+            <button onclick="setRiskFilter('OUTLIER')" id="rf-OUTLIER" class="px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200">Subject Outliers</button>
+            <button onclick="setRiskFilter('BORDERLINE')" id="rf-BORDERLINE" class="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200">Borderline Pass (50-54%)</button>
+          </div>
+          <button onclick="exportRiskCSV()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-300 font-medium transition flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            Export CSV List
+          </button>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-100 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                <th class="p-3">Reg#</th>
+                <th class="p-3">Student Name</th>
+                <th class="p-3">Class</th>
+                <th class="p-3">Offered Pass</th>
+                <th class="p-3">Mean %</th>
+                <th class="p-3">L1R4</th>
+                <th class="p-3">ELMAB3</th>
+                <th class="p-3">Risk Status Flags</th>
+                <th class="p-3">Failing Subjects</th>
+              </tr>
+            </thead>
+            <tbody id="studentRiskTableBody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 2: Subject Performance -->
+      <div id="tabSubjects" class="tab-pane hidden space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-bold text-slate-700 mb-4">Subject Means vs. Cohort Mean Variance</h4>
+            <div class="h-64"><canvas id="chartSubjectMeans"></canvas></div>
+          </div>
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <h4 class="text-sm font-bold text-slate-700 mb-4">Subject Pass Rate (≥ 50%) Breakdown</h4>
+            <div class="h-64"><canvas id="chartSubjectPass"></canvas></div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-100 text-slate-600 uppercase font-semibold border-b border-slate-200">
+                <th class="p-3">Subject Name</th>
+                <th class="p-3">Level Band</th>
+                <th class="p-3">Candidacy</th>
+                <th class="p-3">Subject Mean (μ)</th>
+                <th class="p-3">Std Dev (σ)</th>
+                <th class="p-3 cursor-pointer relative group">
+                  <span class="flex items-center gap-1 border-b border-dotted border-slate-400">
+                    Subject Performance Z-Score
+                    <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  </span>
+                  <div class="absolute hidden group-hover:block bg-slate-900 text-white text-[11px] font-normal normal-case p-3 rounded-xl shadow-xl z-30 top-full left-0 w-80 mt-1 leading-relaxed border border-slate-700">
+                    <b class="text-indigo-300 font-bold">Cross-Subject Standardized Model:</b><br>
+                    Formula: <code class="bg-slate-800 px-1 py-0.5 rounded">Z = (Subject Mean - Mean of Subject Means) / StdDev</code><br><br>
+                    • <span class="text-emerald-400 font-bold">Significantly Higher (Z ≥ +1.0 SD):</span> Subject is performing substantially above cohort subject average.<br>
+                    • <span class="text-rose-400 font-bold">Significantly Lower (Z ≤ -1.0 SD):</span> Subject is performing substantially below cohort subject average.
+                  </div>
+                </th>
+                <th class="p-3">Pass Rate (%)</th>
+                <th class="p-3">Distinction Rate (%)</th>
+              </tr>
+            </thead>
+            <tbody id="subjectTableBody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 3: Heatmap -->
+      <div id="tabHeatmap" class="tab-pane hidden space-y-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 text-xs">
+          <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-200"></span> Distinction (≥ 75%)</div>
+          <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-sky-200"></span> Clear Pass (55-74%)</div>
+          <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-200"></span> Borderline Pass (50-54%)</div>
+          <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-rose-200"></span> Fail (&lt; 50%)</div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div id="heatmapContainer" class="heatmap-container"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Student Scorecard Modal -->
+  <div id="studentModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full p-6 space-y-6 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-start border-b border-slate-100 pb-4">
+        <div>
+          <h3 id="modalStudentName" class="text-xl font-bold text-slate-800">Student Details</h3>
+          <p id="modalStudentSub" class="text-xs text-slate-500 mt-1">Class</p>
+        </div>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
+      </div>
+
+      <!-- Risk Diagnostics Explanatory Banner -->
+      <div id="modalDiagnosticPanel" class="hidden bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2">
+        <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+          <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          Risk Flag Diagnostics
+        </h4>
+        <div id="modalDiagnosticContent" class="space-y-1.5 text-xs"></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <p class="text-xs text-slate-400 uppercase font-semibold">Offered Subjects Passed</p>
+          <p id="modalPassed" class="text-lg font-bold text-indigo-600 mt-1">-</p>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <p class="text-xs text-slate-400 uppercase font-semibold">L1R4 Aggregate</p>
+          <p id="modalL1R4" class="text-lg font-bold text-slate-700 mt-1">-</p>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <p class="text-xs text-slate-400 uppercase font-semibold">ELMAB3 Aggregate</p>
+          <p id="modalELMAB3" class="text-lg font-bold text-slate-700 mt-1">-</p>
+        </div>
+      </div>
+
+      <!-- Subject vs Cohort Mean Chart Section with In-Modal Assessment Switcher -->
+      <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <h4 class="text-xs font-bold text-slate-600 uppercase">Subject Performance vs Cohort Mean</h4>
+          
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-semibold text-slate-500 uppercase">Graph Assessment:</span>
+            <div id="modalPeriodToggleGroup" class="inline-flex rounded-lg bg-white p-1 border border-slate-200 shadow-sm">
+              <!-- Dynamically rendered modal assessment toggle buttons -->
+            </div>
+          </div>
+        </div>
+
+        <div class="h-56"><canvas id="modalBenchmarkChart"></canvas></div>
+      </div>
+
+      <div>
+        <h4 class="text-xs font-bold text-slate-600 uppercase mb-3">Subject Assessment Breakdown & Standardized Deviation (Z-Score)</h4>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr id="modalTableHeaderRow" class="border-b border-slate-200 text-slate-500 uppercase">
+                <!-- Dynamically constructed table headers -->
+              </tr>
+            </thead>
+            <tbody id="modalSubjectTable" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let studentData = [];
+    let subjectList = [];
+    let availablePeriods = ['OVERALL', 'EOY', 'T3', 'T2', 'T1'];
+    let detectedPeriodsInFile = ['OVERALL'];
+    let currentPeriod = 'OVERALL';
+    let modalCurrentPeriod = 'OVERALL';
+    let activeModalStudentId = null;
+    let currentRiskFilter = 'ALL';
+    let chartMeansInstance = null;
+    let chartPassInstance = null;
+    let modalBenchmarkChartInstance = null;
+
+    // --- GLOBAL DRAG AND DROP HANDLING ---
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const dropZone = document.getElementById('uploadPrompt');
+
+    if (dropZone) {
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          preventDefaults(e);
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+          dropZone.classList.add('dragover');
+        }, false);
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          preventDefaults(e);
+          dropZone.classList.remove('dragover');
+        }, false);
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        preventDefaults(e);
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length > 0) {
+          processFile(dt.files[0]);
+        }
+      }, false);
+    }
+
+    function triggerFileInput() {
+      document.getElementById('excelFileInput').click();
+    }
+
+    function handleFileUpload(e) {
+      if (e.target.files && e.target.files[0]) {
+        processFile(e.target.files[0]);
+      }
+    }
+
+    function processFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const wb = XLSX.read(data, { type: 'array' });
+          parseWorkbook(wb);
+        } catch (err) {
+          alert("Error reading Excel file. Please ensure it is a valid MOE Cockpit RE_RES_078 file.");
+          console.error(err);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function getGradePoint(score, level = 'G3') {
+      if (score === null || score === undefined) return null;
+      if (level === 'G3') {
+        if (score >= 75) return 1; if (score >= 70) return 2; if (score >= 65) return 3;
+        if (score >= 60) return 4; if (score >= 55) return 5; if (score >= 50) return 6;
+        if (score >= 45) return 7; if (score >= 40) return 8; return 9;
+      } else if (level === 'G2') {
+        if (score >= 75) return 1; if (score >= 70) return 2; if (score >= 65) return 3;
+        if (score >= 60) return 4; if (score >= 50) return 5; return 6;
+      } else {
+        if (score >= 75) return 1; if (score >= 65) return 2; if (score >= 50) return 3; return 4;
+      }
+    }
+
+    function calculateL1R4(marks) {
+      let elPts = [];
+      if (marks['EL - G3'] && marks['EL - G3'].OVERALL !== null) elPts.push({ sub: 'EL - G3', pt: getGradePoint(marks['EL - G3'].OVERALL, 'G3') });
+      if (marks['HCL - G3'] && marks['HCL - G3'].OVERALL !== null) elPts.push({ sub: 'HCL - G3', pt: getGradePoint(marks['HCL - G3'].OVERALL, 'G3') });
+      if (elPts.length === 0) return '-';
+      elPts.sort((a,b) => a.pt - b.pt);
+      let l1 = elPts[0];
+
+      let humPts = [];
+      Object.keys(marks).forEach(s => {
+        if (s.includes('Hum') && marks[s].OVERALL !== null) humPts.push({ sub: s, pt: getGradePoint(marks[s].OVERALL, 'G3') });
+      });
+      if (humPts.length === 0) return '-';
+      humPts.sort((a,b) => a.pt - b.pt);
+      let r1 = humPts[0];
+
+      let mathSciPts = [];
+      Object.keys(marks).forEach(s => {
+        if ((s.includes('Math') || s.includes('Chem') || s.includes('Phy') || s.includes('Sci')) && marks[s].OVERALL !== null) {
+          if (s !== l1.sub && s !== r1.sub) mathSciPts.push({ sub: s, pt: getGradePoint(marks[s].OVERALL, 'G3') });
+        }
+      });
+      if (mathSciPts.length === 0) return '-';
+      mathSciPts.sort((a,b) => a.pt - b.pt);
+      let r2 = mathSciPts[0];
+
+      let remPts = [];
+      Object.keys(marks).forEach(s => {
+        if (marks[s].OVERALL !== null && s !== l1.sub && s !== r1.sub && s !== r2.sub) remPts.push({ sub: s, pt: getGradePoint(marks[s].OVERALL, 'G3') });
+      });
+      if (remPts.length < 2) return '-';
+      remPts.sort((a,b) => a.pt - b.pt);
+
+      return l1.pt + r1.pt + r2.pt + remPts[0].pt + remPts[1].pt;
+    }
+
+    function calculateELMAB3(marks) {
+      let elKey = Object.keys(marks).find(k => k.includes('EL -') && marks[k].OVERALL !== null);
+      let maKey = Object.keys(marks).find(k => k.includes('Maths -') && marks[k].OVERALL !== null);
+      if (!elKey || !maKey) return '-';
+
+      let elPt = getGradePoint(marks[elKey].OVERALL, 'G2');
+      let maPt = getGradePoint(marks[maKey].OVERALL, 'G2');
+
+      let remPts = [];
+      Object.keys(marks).forEach(s => {
+        if (marks[s].OVERALL !== null && s !== elKey && s !== maKey) remPts.push(getGradePoint(marks[s].OVERALL, 'G2'));
+      });
+      if (remPts.length < 3) return '-';
+      remPts.sort((a,b) => a - b);
+
+      return elPt + maPt + remPts[0] + remPts[1] + remPts[2];
+    }
+
+    function parseWorkbook(wb) {
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+      let headerRowIndex = -1;
+      for (let r = 0; r < Math.min(20, rows.length); r++) {
+        const row = rows[r] || [];
+        if (row.some(val => val !== null && String(val).trim() === 'Reg#')) {
+          headerRowIndex = r;
+          break;
+        }
+      }
+
+      if (headerRowIndex === -1) {
+        alert("Error: Could not locate 'Reg#' header row in the uploaded file.");
+        return;
+      }
+
+      const headerRow = rows[headerRowIndex];
+      const subheaderRow = rows[headerRowIndex + 1] || [];
+      subjectList = [];
+      studentData = [];
+
+      const periodSet = new Set(['OVERALL']);
+      let lastSubjectEndCol = 10;
+
+      for (let col = 10; col < headerRow.length; col++) {
+        let name = headerRow[col];
+        if (name && String(name).trim() !== '') {
+          let sName = String(name).trim();
+
+          // Exclude Grade Summary blocks
+          if (sName.toLowerCase().includes('grade summary') || sName.toLowerCase().includes('summary')) {
+            break;
+          }
+
+          // Determine boundaries of current subject merged block
+          let blockStartCol = Math.max(lastSubjectEndCol, col - 5);
+          let nextSubjectCol = headerRow.length;
+          for (let nc = col + 1; nc < headerRow.length; nc++) {
+            if (headerRow[nc] && String(headerRow[nc]).trim() !== '') {
+              nextSubjectCol = nc;
+              break;
+            }
+          }
+          let blockEndCol = Math.min(nextSubjectCol, col + 10);
+
+          let colMap = { T1: null, T2: null, T3: null, EOY: null, OVERALL: null, GRADE: null };
+
+          for (let subCol = blockStartCol; subCol < blockEndCol; subCol++) {
+            let sh = subheaderRow[subCol] ? String(subheaderRow[subCol]).trim().toUpperCase() : '';
+            if (sh.includes('TERM 1') || sh.includes('T1') || sh.includes('WA1')) { colMap.T1 = subCol; periodSet.add('T1'); }
+            else if (sh.includes('TERM 2') || sh.includes('T2') || sh.includes('WA2')) { colMap.T2 = subCol; periodSet.add('T2'); }
+            else if (sh.includes('TERM 3') || sh.includes('T3') || sh.includes('WA3')) { colMap.T3 = subCol; periodSet.add('T3'); }
+            else if (sh.includes('END-OF-YEAR') || sh.includes('EOY') || sh.includes('FINAL') || sh.includes('EXAM')) { colMap.EOY = subCol; periodSet.add('EOY'); }
+            else if (sh.includes('OVERALL') || sh.includes('COMBINED')) { colMap.OVERALL = subCol; }
+            else if (sh.includes('B/G') || sh.includes('GRADE')) { colMap.GRADE = subCol; }
+          }
+
+          subjectList.push({
+            name: sName,
+            startCol: col,
+            colMap: colMap,
+            level: sName.includes('- G1') ? 'G1' : (sName.includes('- G2') ? 'G2' : 'G3')
+          });
+
+          lastSubjectEndCol = blockEndCol;
+        }
+      }
+
+      detectedPeriodsInFile = Array.from(periodSet);
+
+      const periodGroup = document.getElementById('periodToggleGroup');
+      periodGroup.innerHTML = '';
+
+      const periodLabels = {
+        'OVERALL': 'OVERALL',
+        'EOY': 'End-of-Year Exam',
+        'T3': 'Term 3 WA',
+        'T2': 'Term 2 WA',
+        'T1': 'Term 1 WA'
+      };
+
+      ['OVERALL', 'EOY', 'T3', 'T2', 'T1'].forEach(p => {
+        if (detectedPeriodsInFile.includes(p)) {
+          periodGroup.innerHTML += `
+            <button onclick="setPeriod('${p}')" id="btn-${p}" class="${p === 'OVERALL' ? 'px-3 py-1.5 rounded-md text-xs font-semibold transition bg-indigo-600 text-white shadow-sm' : 'px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition'}">
+              ${periodLabels[p]}
+            </button>
+          `;
+        }
+      });
+
+      const classSet = new Set();
+      const studentStartRow = headerRowIndex + 2;
+
+      for (let r = studentStartRow; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || row[0] === null || row[0] === undefined) continue;
+
+        const regStr = String(row[0]).trim();
+        if (!/^\d+$/.test(regStr)) continue;
+
+        const regNo = parseInt(regStr);
+        const studentName = row[1] && String(row[1]).trim() !== '' ? String(row[1]).trim() : `Student ${regNo}`;
+        const cls = row[2] ? String(row[2]).trim() : 'N/A';
+        classSet.add(cls);
+
+        const studentMarks = {};
+        subjectList.forEach(s => {
+          const cm = s.colMap;
+          studentMarks[s.name] = {
+            T1: cm.T1 !== null ? parseNum(row[cm.T1]) : null,
+            T2: cm.T2 !== null ? parseNum(row[cm.T2]) : null,
+            T3: cm.T3 !== null ? parseNum(row[cm.T3]) : null,
+            EOY: cm.EOY !== null ? parseNum(row[cm.EOY]) : null,
+            OVERALL: cm.OVERALL !== null ? parseNum(row[cm.OVERALL]) : null,
+            GRADE: cm.GRADE !== null && row[cm.GRADE] ? String(row[cm.GRADE]).trim() : ''
+          };
+        });
+
+        const calcL1R4 = calculateL1R4(studentMarks);
+        const calcELMAB3 = calculateELMAB3(studentMarks);
+
+        const studentId = `${cls}_${regNo}`;
+
+        studentData.push({
+          id: studentId,
+          reg: regNo,
+          name: studentName,
+          class: cls,
+          preL1R4: (row[248] && row[248] !== '-') ? row[248] : calcL1R4,
+          preELMAB3: (row[249] && row[249] !== '-') ? row[249] : calcELMAB3,
+          marks: studentMarks
+        });
+      }
+
+      const classFilter = document.getElementById('classFilter');
+      classFilter.innerHTML = '<option value="ALL">All Classes</option>';
+
+      Array.from(classSet).sort().forEach(c => {
+        classFilter.innerHTML += `<option value="${c}">Class ${c}</option>`;
+      });
+
+      document.getElementById('uploadPrompt').classList.add('hidden');
+      document.getElementById('headerUploadBtn').classList.remove('hidden');
+      document.getElementById('dashboardContent').classList.remove('hidden');
+
+      renderDashboard();
+    }
+
+    function parseNum(val) {
+      if (val === null || val === undefined || val === '-') return null;
+      const num = parseFloat(val);
+      return isNaN(num) ? null : num;
+    }
+
+    function setPeriod(period) {
+      currentPeriod = period;
+      ['OVERALL', 'EOY', 'T3', 'T2', 'T1'].forEach(p => {
+        const btn = document.getElementById(`btn-${p}`);
+        if (btn) {
+          btn.className = (p === period)
+            ? 'px-3 py-1.5 rounded-md text-xs font-semibold transition bg-indigo-600 text-white shadow-sm'
+            : 'px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition';
+        }
+      });
+      renderDashboard();
+    }
+
+    function setRiskFilter(rf) {
+      currentRiskFilter = rf;
+      ['ALL', 'CRITICAL', 'DROP', 'OUTLIER', 'BORDERLINE'].forEach(f => {
+        const btn = document.getElementById(`rf-${f}`);
+        if (f === rf) btn.classList.add('ring-2', 'ring-indigo-500');
+        else btn.classList.remove('ring-2', 'ring-indigo-500');
+      });
+      renderRiskTable();
+    }
+
+    function renderDashboard() {
+      const selectedClass = document.getElementById('classFilter').value;
+      const filteredStudents = studentData.filter(s => selectedClass === 'ALL' || s.class === selectedClass);
+
+      filteredStudents.forEach(s => {
+        let passCount = 0, failCount = 0, totalMarks = 0, takenCount = 0, coreFail = false;
+        let failSubjects = [];
+
+        subjectList.forEach(subj => {
+          const m = s.marks[subj.name][currentPeriod];
+          if (m !== null) {
+            takenCount++;
+            totalMarks += m;
+            if (m >= 50) {
+              passCount++;
+            } else {
+              failCount++;
+              failSubjects.push(subj.name);
+              if (subj.name.includes('EL -') || subj.name.includes('Maths -')) coreFail = true;
+            }
+          }
+        });
+
+        s.currentOfferedCount = takenCount;
+        s.currentPassCount = passCount;
+        s.currentFailCount = failCount;
+        s.currentMean = takenCount > 0 ? (totalMarks / takenCount) : 0;
+        s.currentFailSubjects = failSubjects;
+
+        let prevPeriod = currentPeriod === 'EOY' ? (detectedPeriodsInFile.includes('T3') ? 'T3' : 'T2') : (currentPeriod === 'T3' ? 'T2' : (currentPeriod === 'T2' ? 'T1' : null));
+        s.hasDrop = false;
+        s.dropAmount = 0;
+        
+        const periodNames = { T1: 'Term 1 WA', T2: 'Term 2 WA', T3: 'Term 3 WA', EOY: 'End-of-Year Exam', OVERALL: 'Overall' };
+        s.prevPeriodName = prevPeriod ? periodNames[prevPeriod] : '';
+        s.currPeriodName = periodNames[currentPeriod] || '';
+
+        if (prevPeriod) {
+          let currTot = 0, prevTot = 0, cnt = 0;
+          subjectList.forEach(subj => {
+            const cm = s.marks[subj.name][currentPeriod];
+            const pm = s.marks[subj.name][prevPeriod];
+            if (cm !== null && pm !== null) { currTot += cm; prevTot += pm; cnt++; }
+          });
+          if (cnt > 0) {
+            let prevAvg = prevTot / cnt;
+            let currAvg = currTot / cnt;
+            let diff = prevAvg - currAvg;
+            if (diff >= 10) {
+              s.hasDrop = true;
+              s.dropAmount = diff;
+              s.prevAvg = prevAvg;
+              s.currAvg = currAvg;
+            }
+          }
+        }
+
+        s.isCritical = failCount >= 3 || coreFail;
+        s.isOutlier = passCount >= 4 && failCount >= 1 && failCount <= 2;
+        s.isBorderline = s.currentMean >= 50 && s.currentMean < 55;
+      });
+
+      document.getElementById('kpiTotalStudents').innerText = filteredStudents.length;
+      const passCohort = filteredStudents.filter(s => s.currentPassCount >= 5).length;
+      document.getElementById('kpiPassRate').innerText = filteredStudents.length > 0 ? Math.round((passCohort / filteredStudents.length) * 100) + '%' : '0%';
+      document.getElementById('kpiCriticalCount').innerText = filteredStudents.filter(s => s.isCritical).length;
+      document.getElementById('kpiDropCount').innerText = filteredStudents.filter(s => s.hasDrop).length;
+
+      renderRiskTable();
+      renderSubjectAnalytics(filteredStudents);
+      renderHeatmap(filteredStudents);
+    }
+
+    function renderRiskTable() {
+      const selectedClass = document.getElementById('classFilter').value;
+      let students = studentData.filter(s => selectedClass === 'ALL' || s.class === selectedClass);
+
+      if (currentRiskFilter === 'CRITICAL') students = students.filter(s => s.isCritical);
+      else if (currentRiskFilter === 'DROP') students = students.filter(s => s.hasDrop);
+      else if (currentRiskFilter === 'OUTLIER') students = students.filter(s => s.isOutlier);
+      else if (currentRiskFilter === 'BORDERLINE') students = students.filter(s => s.isBorderline);
+
+      const tbody = document.getElementById('studentRiskTableBody');
+      tbody.innerHTML = '';
+
+      students.forEach(s => {
+        let flags = '';
+        if (s.isCritical) flags += `<span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-semibold text-[10px] mr-1">Critical</span>`;
+        if (s.hasDrop) flags += `<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-semibold text-[10px] mr-1">Drop ≥ 10%</span>`;
+        if (s.isOutlier) flags += `<span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-semibold text-[10px] mr-1">Outlier</span>`;
+        if (s.isBorderline) flags += `<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-semibold text-[10px] mr-1">Borderline</span>`;
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 transition';
+        tr.innerHTML = `
+          <td class="p-3 font-semibold text-slate-800">${s.reg}</td>
+          <td class="p-3 font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer" onclick="openModal('${s.id}')">${s.name}</td>
+          <td class="p-3 text-slate-600">${s.class}</td>
+          <td class="p-3"><span class="font-bold text-slate-700">${s.currentPassCount} / ${s.currentOfferedCount}</span></td>
+          <td class="p-3 font-bold ${s.currentMean < 50 ? 'text-rose-600' : 'text-slate-800'}">${s.currentMean.toFixed(1)}%</td>
+          <td class="p-3 font-semibold text-slate-700">${s.preL1R4 !== null ? s.preL1R4 : '-'}</td>
+          <td class="p-3 font-semibold text-slate-700">${s.preELMAB3 !== null ? s.preELMAB3 : '-'}</td>
+          <td class="p-3">${flags || '<span class="text-slate-400">Normal</span>'}</td>
+          <td class="p-3 text-rose-600 max-w-xs truncate">${s.currentFailSubjects.join(', ') || '-'}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderSubjectAnalytics(students) {
+      const cohortMean = students.reduce((acc, s) => acc + s.currentMean, 0) / (students.length || 1);
+      const subjectStats = [];
+
+      subjectList.forEach(subj => {
+        let scores = [];
+        let pass = 0, distinction = 0;
+        students.forEach(s => {
+          const m = s.marks[subj.name][currentPeriod];
+          if (m !== null) {
+            scores.push(m);
+            if (m >= 50) pass++;
+            if (m >= 75) distinction++;
+          }
+        });
+
+        if (scores.length > 0) {
+          const sMean = scores.reduce((a, b) => a + b, 0) / scores.length;
+          // Calculate Sample Standard Deviation (σ)
+          const varianceSum = scores.reduce((acc, val) => acc + Math.pow(val - sMean, 2), 0);
+          const sSD = scores.length > 1 ? Math.sqrt(varianceSum / (scores.length - 1)) : 0;
+
+          subjectStats.push({
+            name: subj.name,
+            level: subj.level,
+            candidacy: scores.length,
+            mean: sMean,
+            sd: sSD,
+            variance: sMean - cohortMean,
+            passRate: (pass / scores.length) * 100,
+            distRate: (distinction / scores.length) * 100
+          });
+        }
+      });
+
+      // Calculate Overall Subject-Level Standard Deviation across Subject Means
+      const subjectMeansList = subjectStats.map(s => s.mean);
+      const overallSubjectMean = subjectMeansList.length > 0 ? subjectMeansList.reduce((a, b) => a + b, 0) / subjectMeansList.length : 0;
+      const subjectVarianceSum = subjectMeansList.reduce((acc, val) => acc + Math.pow(val - overallSubjectMean, 2), 0);
+      const overallSubjectSD = subjectMeansList.length > 1 ? Math.sqrt(subjectVarianceSum / (subjectMeansList.length - 1)) : 0;
+
+      const tbody = document.getElementById('subjectTableBody');
+      tbody.innerHTML = '';
+      subjectStats.forEach(st => {
+        let subjZText = '-';
+        let subjZCss = 'text-slate-600 font-medium';
+
+        if (overallSubjectSD > 0) {
+          const subjZ = (st.mean - overallSubjectMean) / overallSubjectSD;
+          const prefix = subjZ >= 0 ? '+' : '';
+
+          if (subjZ >= 1.0) {
+            subjZText = `${prefix}${subjZ.toFixed(2)} SD (Significantly Higher)`;
+            subjZCss = 'text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block';
+          } else if (subjZ <= -1.0) {
+            subjZText = `${subjZ.toFixed(2)} SD (Significantly Lower)`;
+            subjZCss = 'text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block';
+          } else {
+            subjZText = `${prefix}${subjZ.toFixed(2)} SD`;
+            subjZCss = 'text-slate-600 font-medium';
+          }
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="p-3 font-semibold text-slate-800">${st.name}</td>
+          <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${st.level === 'G3' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700'}">${st.level}</span></td>
+          <td class="p-3">${st.candidacy}</td>
+          <td class="p-3 ${st.mean < 50 ? 'text-rose-600 font-bold' : 'text-slate-800 font-bold'}">${st.mean.toFixed(1)}%</td>
+          <td class="p-3 font-medium text-slate-600">±${st.sd.toFixed(1)}%</td>
+          <td class="p-3"><span class="${subjZCss}">${subjZText}</span></td>
+          <td class="p-3 font-bold ${st.passRate < 70 ? 'text-rose-600' : 'text-slate-800'}">${st.passRate.toFixed(1)}%</td>
+          <td class="p-3 text-emerald-600 font-semibold">${st.distRate.toFixed(1)}%</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      const labels = subjectStats.map(s => s.name);
+      const means = subjectStats.map(s => s.mean);
+      const passRates = subjectStats.map(s => s.passRate);
+
+      if (chartMeansInstance) chartMeansInstance.destroy();
+      chartMeansInstance = new Chart(document.getElementById('chartSubjectMeans'), {
+        type: 'bar',
+        data: { labels: labels, datasets: [{ label: 'Subject Mean %', data: means, backgroundColor: '#6366f1' }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+
+      if (chartPassInstance) chartPassInstance.destroy();
+      chartPassInstance = new Chart(document.getElementById('chartSubjectPass'), {
+        type: 'bar',
+        data: { labels: labels, datasets: [{ label: 'Pass Rate %', data: passRates, backgroundColor: '#10b981' }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+    }
+
+    function renderHeatmap(students) {
+      const container = document.getElementById('heatmapContainer');
+      let html = '<table class="heatmap-table border-collapse text-xs"><thead><tr>';
+      html += '<th class="p-2 border border-slate-200 sticky-col-1">Reg#</th>';
+      html += '<th class="p-2 border border-slate-200 sticky-col-2">Student Name</th>';
+      html += '<th class="p-2 border border-slate-200 sticky-col-3">Class</th>';
+      
+      subjectList.forEach(s => { html += `<th class="p-2 border border-slate-200 text-[10px] rotate-45 h-20">${s.name}</th>`; });
+      html += '</tr></thead><tbody>';
+
+      students.forEach(s => {
+        html += `<tr>`;
+        html += `<td class="p-1 border border-slate-200 font-bold text-center sticky-col-1">${s.reg}</td>`;
+        html += `<td class="p-1 border border-slate-200 font-semibold text-indigo-600 hover:underline cursor-pointer whitespace-nowrap px-2 sticky-col-2" onclick="openModal('${s.id}')">${s.name}</td>`;
+        html += `<td class="p-1 border border-slate-200 text-center sticky-col-3">${s.class}</td>`;
+        
+        subjectList.forEach(subj => {
+          const m = s.marks[subj.name][currentPeriod];
+          let css = 'bg-na';
+          if (m !== null) {
+            if (m >= 75) css = 'bg-distinction';
+            else if (m >= 55) css = 'bg-pass';
+            else if (m >= 50) css = 'bg-borderline';
+            else css = 'bg-fail';
+          }
+          html += `<td class="heatmap-cell border border-slate-200 ${css}">${m !== null ? Math.round(m) : '-'}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+      document.getElementById(tabId).classList.remove('hidden');
+      ['tabRisk', 'tabSubjects', 'tabHeatmap'].forEach(t => {
+        const btn = document.getElementById(`tabBtn-${t}`);
+        btn.className = (t === tabId)
+          ? 'pb-3 border-b-2 border-indigo-600 text-indigo-600 font-semibold'
+          : 'pb-3 border-b-2 border-transparent hover:text-slate-800 text-slate-500';
+      });
+    }
+
+    function openModal(studentId) {
+      activeModalStudentId = studentId;
+      modalCurrentPeriod = currentPeriod;
+
+      const student = studentData.find(s => s.id === studentId);
+      if (!student) return;
+
+      document.getElementById('modalStudentName').innerText = `${student.name} (Reg #${student.reg})`;
+      document.getElementById('modalStudentSub').innerText = `Class ${student.class}`;
+      document.getElementById('modalPassed').innerText = `${student.currentPassCount} / ${student.currentOfferedCount} Offered`;
+      document.getElementById('modalL1R4').innerText = student.preL1R4 || '-';
+      document.getElementById('modalELMAB3').innerText = student.preELMAB3 || '-';
+
+      const diagPanel = document.getElementById('modalDiagnosticPanel');
+      const diagContent = document.getElementById('modalDiagnosticContent');
+      diagContent.innerHTML = '';
+      let diagCount = 0;
+
+      if (student.isCritical) {
+        diagCount++;
+        let reason = [];
+        if (student.currentFailCount >= 3) reason.push(`Failing ${student.currentFailCount} subjects (${student.currentFailSubjects.join(', ')})`);
+        const coreFails = student.currentFailSubjects.filter(s => s.includes('EL -') || s.includes('Maths -'));
+        if (coreFails.length > 0) reason.push(`Failing core subject(s): ${coreFails.join(', ')}`);
+
+        diagContent.innerHTML += `
+          <div class="p-2 rounded bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-2">
+            <span class="font-bold text-xs uppercase px-1.5 py-0.5 rounded bg-rose-200 text-rose-800">Critical Priority</span>
+            <div>${reason.join('; ')}. Requires immediate academic intervention.</div>
+          </div>
+        `;
+      }
+
+      if (student.hasDrop) {
+        diagCount++;
+        diagContent.innerHTML += `
+          <div class="p-2 rounded bg-amber-50 border border-amber-200 text-amber-800 flex items-start gap-2">
+            <span class="font-bold text-xs uppercase px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Trajectory Drop</span>
+            <div>Overall mean dropped by <b class="text-amber-900">${student.dropAmount.toFixed(1)}%</b> (from ${student.prevAvg.toFixed(1)}% in ${student.prevPeriodName} down to ${student.currAvg.toFixed(1)}% in ${student.currPeriodName}).</div>
+          </div>
+        `;
+      }
+
+      if (student.isOutlier) {
+        diagCount++;
+        diagContent.innerHTML += `
+          <div class="p-2 rounded bg-purple-50 border border-purple-200 text-purple-800 flex items-start gap-2">
+            <span class="font-bold text-xs uppercase px-1.5 py-0.5 rounded bg-purple-200 text-purple-800">Subject Outlier</span>
+            <div>Passing ${student.currentPassCount} subjects comfortably, but experiencing a severe isolated dip in <b>${student.currentFailSubjects.join(', ')}</b>.</div>
+          </div>
+        `;
+      }
+
+      if (student.isBorderline) {
+        diagCount++;
+        diagContent.innerHTML += `
+          <div class="p-2 rounded bg-blue-50 border border-blue-200 text-blue-800 flex items-start gap-2">
+            <span class="font-bold text-xs uppercase px-1.5 py-0.5 rounded bg-blue-200 text-blue-800">Borderline Pass</span>
+            <div>Overall student mean is <b class="text-blue-900">${student.currentMean.toFixed(1)}%</b>, hovering in the vulnerable 50–54% borderline zone.</div>
+          </div>
+        `;
+      }
+
+      if (diagCount > 0) {
+        diagPanel.classList.remove('hidden');
+      } else {
+        diagPanel.classList.add('hidden');
+      }
+
+      const modalToggleGroup = document.getElementById('modalPeriodToggleGroup');
+      modalToggleGroup.innerHTML = '';
+      const periodShortNames = { OVERALL: 'Overall', EOY: 'EOY', T3: 'T3 WA', T2: 'T2 WA', T1: 'T1 WA' };
+
+      ['OVERALL', 'EOY', 'T3', 'T2', 'T1'].forEach(p => {
+        if (detectedPeriodsInFile.includes(p)) {
+          modalToggleGroup.innerHTML += `
+            <button onclick="setModalPeriod('${p}')" id="modalBtn-${p}" class="${p === modalCurrentPeriod ? 'px-2.5 py-1 rounded-md text-[11px] font-semibold transition bg-indigo-600 text-white shadow-sm' : 'px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-600 hover:text-slate-900 transition'}">
+              ${periodShortNames[p]}
+            </button>
+          `;
+        }
+      });
+
+      renderModalChartAndTable();
+      document.getElementById('studentModal').classList.remove('hidden');
+    }
+
+    function setModalPeriod(period) {
+      modalCurrentPeriod = period;
+      ['OVERALL', 'EOY', 'T3', 'T2', 'T1'].forEach(p => {
+        const btn = document.getElementById(`modalBtn-${p}`);
+        if (btn) {
+          btn.className = (p === period)
+            ? 'px-2.5 py-1 rounded-md text-[11px] font-semibold transition bg-indigo-600 text-white shadow-sm'
+            : 'px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-600 hover:text-slate-900 transition';
+        }
+      });
+      renderModalChartAndTable();
+    }
+
+    function renderModalChartAndTable() {
+      if (!activeModalStudentId) return;
+      const student = studentData.find(s => s.id === activeModalStudentId);
+      if (!student) return;
+
+      // Filter STRICTLY to subjects offered by the student
+      const offeredSubjs = subjectList.filter(subj => {
+        const m = student.marks[subj.name];
+        if (!m) return false;
+        return m.OVERALL !== null || m.T1 !== null || m.T2 !== null || m.T3 !== null || m.EOY !== null;
+      });
+
+      // Compute Cohort Means (μ) and Standard Deviations (σ) for modalCurrentPeriod
+      const cohortStats = {};
+      offeredSubjs.forEach(subj => {
+        let scores = [];
+        studentData.forEach(s => {
+          const m = s.marks[subj.name][modalCurrentPeriod];
+          if (m !== null) scores.push(m);
+        });
+
+        if (scores.length > 0) {
+          const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+          const variance = scores.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0);
+          const sd = scores.length > 1 ? Math.sqrt(variance / (scores.length - 1)) : 0;
+          cohortStats[subj.name] = { mean: mean, sd: sd };
+        } else {
+          cohortStats[subj.name] = { mean: null, sd: null };
+        }
+      });
+
+      const headerRow = document.getElementById('modalTableHeaderRow');
+      let headerHTML = `<th class="py-2">Subject</th>`;
+      if (detectedPeriodsInFile.includes('T1')) headerHTML += `<th class="py-2">Term 1 WA</th>`;
+      if (detectedPeriodsInFile.includes('T2')) headerHTML += `<th class="py-2">Term 2 WA</th>`;
+      if (detectedPeriodsInFile.includes('T3')) headerHTML += `<th class="py-2">Term 3 WA</th>`;
+      if (detectedPeriodsInFile.includes('EOY')) headerHTML += `<th class="py-2">EOY Exam</th>`;
+
+      const periodShortNames = { OVERALL: 'Overall', EOY: 'EOY', T3: 'T3 WA', T2: 'T2 WA', T1: 'T1 WA' };
+      const selectedPeriodLabel = periodShortNames[modalCurrentPeriod] || modalCurrentPeriod;
+
+      headerHTML += `
+        <th class="py-2 font-bold text-slate-800">Overall Score</th>
+        <th class="py-2">Cohort Mean (${selectedPeriodLabel})</th>
+        <th class="py-2 cursor-pointer relative group">
+          <span class="flex items-center gap-1 border-b border-dotted border-slate-400">
+            Standardized Deviation (Z-Score)
+            <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          </span>
+          <div class="absolute hidden group-hover:block bg-slate-900 text-white text-[11px] font-normal normal-case p-3 rounded-xl shadow-xl z-30 top-full right-0 w-80 mt-1 leading-relaxed border border-slate-700">
+            <b class="text-indigo-300 font-bold">Standardized Score Model (Z-Score):</b><br>
+            Formula: <code class="bg-slate-800 px-1 py-0.5 rounded">Z = (Score - Mean) / StdDev</code><br><br>
+            • <span class="text-emerald-400 font-bold">Green Badge (Z ≥ +1.0 SD):</span> Score is ≥ 1 SD above average (Top ~16% of cohort).<br>
+            • <span class="text-rose-400 font-bold">Red Badge (Z ≤ -1.0 SD):</span> Score is ≥ 1 SD below average (Bottom ~16% / needs intervention).<br>
+            • <span class="text-slate-300 font-bold">Normal (-1.0 &lt; Z &lt; +1.0 SD):</span> Within standard cohort variance.
+          </div>
+        </th>
+        <th class="py-2">Grade</th>
+      `;
+      headerRow.innerHTML = headerHTML;
+
+      const barColors = [];
+
+      const tbody = document.getElementById('modalSubjectTable');
+      tbody.innerHTML = '';
+      offeredSubjs.forEach(subj => {
+        const m = student.marks[subj.name];
+        const studentScore = m[modalCurrentPeriod];
+        const stats = cohortStats[subj.name];
+        
+        let varianceText = '-';
+        let varianceCss = 'text-slate-600 font-medium';
+        let barColor = '#4f46e5';
+
+        if (studentScore !== null && stats.mean !== null && stats.sd !== null && stats.sd > 0) {
+          const zScore = (studentScore - stats.mean) / stats.sd;
+          const prefix = zScore >= 0 ? '+' : '';
+
+          if (zScore >= 1.0) {
+            varianceText = `${prefix}${zScore.toFixed(2)} SD (Significantly Higher)`;
+            varianceCss = 'text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block';
+            barColor = '#10b981';
+          } else if (zScore <= -1.0) {
+            varianceText = `${zScore.toFixed(2)} SD (Significantly Lower)`;
+            varianceCss = 'text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block';
+            barColor = '#f43f5e';
+          } else {
+            varianceText = `${prefix}${zScore.toFixed(2)} SD`;
+            varianceCss = 'text-slate-600 font-medium';
+            barColor = '#4f46e5';
+          }
+        } else if (studentScore !== null && stats.mean !== null) {
+          const diff = studentScore - stats.mean;
+          varianceText = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+          barColor = '#4f46e5';
+        }
+
+        barColors.push(barColor);
+
+        let trHTML = `<td class="py-2 font-semibold text-slate-800">${subj.name}</td>`;
+        if (detectedPeriodsInFile.includes('T1')) trHTML += `<td class="py-2">${m.T1 !== null ? m.T1 + '%' : '-'}</td>`;
+        if (detectedPeriodsInFile.includes('T2')) trHTML += `<td class="py-2">${m.T2 !== null ? m.T2 + '%' : '-'}</td>`;
+        if (detectedPeriodsInFile.includes('T3')) trHTML += `<td class="py-2">${m.T3 !== null ? m.T3 + '%' : '-'}</td>`;
+        if (detectedPeriodsInFile.includes('EOY')) trHTML += `<td class="py-2">${m.EOY !== null ? m.EOY + '%' : '-'}</td>`;
+
+        trHTML += `
+          <td class="py-2 font-bold ${m.OVERALL < 50 ? 'text-rose-600' : 'text-slate-800'}">${m.OVERALL !== null ? m.OVERALL + '%' : '-'}</td>
+          <td class="py-2 text-slate-600 font-semibold">${stats.mean !== null ? stats.mean.toFixed(1) + '%' : '-'}</td>
+          <td class="py-2"><span class="${varianceCss}">${varianceText}</span></td>
+          <td class="py-2 font-semibold text-slate-500">${m.GRADE || '-'}</td>
+        `;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = trHTML;
+        tbody.appendChild(tr);
+      });
+
+      const subLabels = offeredSubjs.map(s => s.name);
+      const studentScores = offeredSubjs.map(s => student.marks[s.name][modalCurrentPeriod]);
+      const cohortAvgList = offeredSubjs.map(s => cohortStats[s.name].mean ? cohortStats[s.name].mean.toFixed(1) : null);
+
+      if (modalBenchmarkChartInstance) modalBenchmarkChartInstance.destroy();
+      modalBenchmarkChartInstance = new Chart(document.getElementById('modalBenchmarkChart'), {
+        type: 'bar',
+        data: {
+          labels: subLabels,
+          datasets: [
+            { label: 'Student Score %', data: studentScores, backgroundColor: barColors },
+            { label: `Cohort Mean % (${selectedPeriodLabel})`, data: cohortAvgList, backgroundColor: '#cbd5e1' }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    }
+
+    function closeModal() {
+      document.getElementById('studentModal').classList.add('hidden');
+      activeModalStudentId = null;
+    }
+
+    function exportRiskCSV() {
+      let csv = 'RegNo,Name,Class,OfferedPass,MeanPercentage,L1R4,ELMAB3,RiskStatus,FailingSubjects\n';
+      studentData.forEach(s => {
+        let status = s.isCritical ? 'Critical Priority' : (s.hasDrop ? 'Trajectory Drop' : (s.isOutlier ? 'Outlier' : 'Normal'));
+        csv += `"${s.reg}","${s.name}","${s.class}","${s.currentPassCount}/${s.currentOfferedCount}",${s.currentMean.toFixed(1)},"${s.preL1R4}","${s.preELMAB3}","${status}","${s.currentFailSubjects.join('; ')}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Student_Intervention_List_${currentPeriod}.csv`;
+      a.click();
+    }
+  </script>
+</body>
+</html>
